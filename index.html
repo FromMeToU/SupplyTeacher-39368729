@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดตารางสอนแทน (กรณีครูลากิจ/ป่วย)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+        input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; filter: invert(0.6) sepia(0.5) saturate(5) hue-rotate(200deg); }
+        .action-button { @apply inline-flex items-center justify-center px-5 py-2.5 text-base font-medium text-center text-white rounded-lg shadow-md transition duration-150 ease-in-out focus:ring-4 focus:outline-none w-full sm:w-auto; }
+        .tab-button { @apply px-4 py-2 text-lg font-medium border-b-2 border-transparent hover:border-indigo-500 hover:text-indigo-600 focus:outline-none transition duration-150 ease-in-out; }
+        .tab-button.active { @apply border-indigo-500 text-indigo-600; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #333; color: #fff; padding: 10px 20px; border-radius: 5px; opacity: 0; transition: opacity 0.5s ease-in-out; z-index: 1000; text-align: center; }
+        #toast.show { opacity: 1; }
+        /* Custom Checkbox Style for Teachers - Fixed */
+        .teacher-checkbox-input:checked + label {
+            background-color: #e0e7ff; /* bg-indigo-100 */
+            border-color: #6366f1; /* border-indigo-500 */
+            box-shadow: 0 0 0 1px #6366f1; /* ring-1 ring-indigo-500 */
+        }
+        .teacher-checkbox-input:checked + label .custom-check-box {
+            background-color: #6366f1; /* bg-indigo-500 */
+            border-color: #6366f1;
+        }
+        .teacher-checkbox-input:checked + label .custom-check-icon {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-slate-100">
+
+    <div class="min-h-screen p-4 md:p-8">
+        <div class="max-w-5xl mx-auto bg-white p-6 md:p-8 rounded-2xl shadow-lg border-t-4 border-indigo-600">
+            <h1 class="text-3xl font-bold text-center text-indigo-800 mb-2">
+                ระบบจัดตารางสอนแทนอัตโนมัติ
+            </h1>
+            <p class="text-center text-slate-500 mb-8">(กรณีครูลากิจ / ลาป่วย / ไปราชการ / อบรม)</p>
+
+            <!-- Input Section -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 bg-slate-50 p-6 rounded-xl border border-slate-200">
+                <!-- Date Selection -->
+                <div class="md:col-span-1 border-b md:border-b-0 md:border-r border-slate-300 pb-6 md:pb-0 md:pr-6 text-center md:text-left">
+                    <label for="date-picker" class="block text-lg font-semibold text-slate-700 mb-3">
+                        <i class="far fa-calendar-alt text-indigo-600 mr-2"></i> วันที่ต้องการจัดสอนแทน
+                    </label>
+                    <input type="date" id="date-picker" class="w-full p-3 border border-slate-300 rounded-lg text-lg text-center shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <p id="day-display" class="mt-3 text-lg font-medium text-indigo-700 bg-indigo-50 py-2 px-4 rounded-lg inline-block md:block text-center"></p>
+                </div>
+
+                <!-- Teacher Selection -->
+                <div class="md:col-span-2">
+                    <div class="flex justify-between items-end mb-3">
+                        <label class="block text-lg font-semibold text-slate-700">
+                            <i class="fas fa-user-minus text-red-500 mr-2"></i> เลือกครูที่ลากิจ / ป่วย / ราชการ / อบรม
+                        </label>
+                        <button id="clear-selection-btn" class="text-sm text-red-600 hover:text-red-800 underline focus:outline-none">ล้างการเลือก</button>
+                    </div>
+                    
+                    <div id="absent-teachers-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-y-auto p-2 border border-slate-200 rounded-lg bg-white shadow-inner">
+                        <!-- Checkboxes will be injected here via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap justify-center gap-3 mb-8">
+                <button id="generate-btn" class="action-button bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-300 !w-full sm:!w-auto px-8 py-3 text-lg shadow-lg">
+                    <i class="fas fa-magic mr-2"></i> จัดตารางสอนแทน
+                </button>
+                <button id="export-current-tab-btn" class="action-button bg-teal-600 hover:bg-teal-700 focus:ring-teal-300 hidden">
+                    <i class="fas fa-file-image mr-2"></i> Export หน้านี้ (JPG)
+                </button>
+                <button id="share-current-tab-btn" class="action-button bg-blue-600 hover:bg-blue-700 focus:ring-blue-300 hidden">
+                    <i class="fas fa-share-alt mr-2"></i> แชร์เฉพาะหน้านี้
+                </button>
+                <button id="export-all-teachers-zip-btn" class="action-button bg-red-600 hover:bg-red-700 focus:ring-red-300 hidden">
+                    <i class="fas fa-file-archive mr-2"></i> Export ครูทั้งหมด (ZIP)
+                </button>
+            </div>
+
+            <hr class="my-6 border-slate-200" />
+
+            <!-- Tabs -->
+            <div id="results-area" class="hidden">
+                <div class="mb-4 border-b border-gray-200 overflow-x-auto">
+                    <nav class="-mb-px flex space-x-6 min-w-max pb-2 px-2" aria-label="Tabs">
+                        <button class="tab-button active" data-tab="substitute-summary-schedule"><i class="fas fa-list-check mr-2"></i> สรุปการสอนแทน</button>
+                        <button class="tab-button" data-tab="teacher-schedule"><i class="fas fa-chalkboard-teacher mr-2"></i> ตาราง(เฉพาะครูที่สอนแทน)</button>
+                        <button class="tab-button" data-tab="student-schedule"><i class="fas fa-user-graduate mr-2"></i> ตาราง(เฉพาะนักเรียน)</button>
+                        <button class="tab-button" data-tab="teacher-detail-schedule"><i class="fas fa-user-shield mr-2"></i> ดูตารางรายบุคคล</button>
+                        <button class="tab-button" data-tab="student-detail-schedule"><i class="fas fa-school mr-2"></i> ดูตารางรายชั้น</button>
+                    </nav>
+                </div>
+
+                <!-- Tab Contents -->
+                <div id="substitute-summary-schedule-content" class="tab-content active space-y-6 bg-white p-2">
+                    <h3 id="substitute-summary-schedule-header" class="text-2xl font-bold text-center text-indigo-700 mb-6"></h3>
+                    <div id="substitute-summary-schedule-details" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                    <p id="substitute-summary-schedule-nodata" class="text-center text-slate-500 text-xl font-medium py-8 hidden"></p>
+                </div>
+
+                <div id="teacher-schedule-content" class="tab-content space-y-6 bg-white p-2">
+                    <h3 id="teacher-schedule-header" class="text-2xl font-bold text-center text-indigo-700 mb-6"></h3>
+                    <div id="teacher-schedule-details" class="space-y-4"></div>
+                    <p id="teacher-schedule-nodata" class="text-center text-slate-500 text-xl font-medium py-8 hidden"></p>
+                </div>
+
+                <div id="student-schedule-content" class="tab-content space-y-6 bg-white p-2">
+                    <h3 id="student-schedule-header" class="text-2xl font-bold text-center text-indigo-700 mb-6"></h3>
+                    <div id="student-schedule-details" class="space-y-4"></div>
+                    <p id="student-schedule-nodata" class="text-center text-slate-500 text-xl font-medium py-8 hidden"></p>
+                </div>
+
+                <div id="teacher-detail-schedule-content" class="tab-content space-y-6 bg-white p-2">
+                    <h3 class="text-2xl font-bold text-center text-indigo-700 mb-4">ตารางสอนรายบุคคล (ประจำวัน)</h3>
+                    <div class="flex justify-center mb-4">
+                        <select id="teacher-detail-select" class="w-full max-w-xs p-3 border border-slate-300 rounded-lg text-lg text-center shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="">-- เลือกชื่อครู --</option>
+                        </select>
+                    </div>
+                    <div id="teacher-detail-schedule-table" class="overflow-x-auto"></div>
+                    <p id="teacher-detail-schedule-nodata" class="text-center text-slate-500 text-xl font-medium py-8 hidden"></p>
+                </div>
+
+                <div id="student-detail-schedule-content" class="tab-content space-y-6 bg-white p-2">
+                    <h3 class="text-2xl font-bold text-center text-indigo-700 mb-4">ตารางเรียนรายชั้น (ประจำวัน)</h3>
+                    <div class="flex justify-center mb-4">
+                        <select id="student-detail-select" class="w-full max-w-xs p-3 border border-slate-300 rounded-lg text-lg text-center shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="">-- เลือกชั้นเรียน --</option>
+                        </select>
+                    </div>
+                    <div id="student-detail-schedule-table" class="overflow-x-auto"></div>
+                    <p id="student-detail-schedule-nodata" class="text-center text-slate-500 text-xl font-medium py-8 hidden"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast">ข้อความแจ้งเตือน</div>
+
+    
+
+    <script src="script.min.js"></script>
+</body>
+</html>
